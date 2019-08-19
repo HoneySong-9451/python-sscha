@@ -130,3 +130,26 @@ class NEB:
         """
         pass
 
+    def NEB_CFG(self, grad_dyn, grad_struct):
+        """
+        The function that project the gradient of the structure into the 
+        NEB one.
+        """
+        pass
+
+    def single_iteration(self, use_neb = True):
+        """
+        Perform a single iteration over the whole band.
+        
+        Parameters
+        ----------
+            use_neb : bool
+                If true the NEB minimization is performed,
+                otherwise, atomic positions are kept fixed.
+        """
+        pass
+
+
+
+
+            
