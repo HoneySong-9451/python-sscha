@@ -703,8 +703,11 @@ class Lanczos:
             print ("Error while loading %s file.\n" % file)
             raise IOError("Error while loading %s" % file)
 
-        
-        data = np.load(file) 
+        # From numpy 1.14.4 it is necessary to specify allow_pickle to load a complex object.
+        try:
+            data = np.load(file, allow_pickle = True) 
+        except:
+            data = np.load(file)
 
         self.T = data["T"]
         self.nat = data["nat"]
