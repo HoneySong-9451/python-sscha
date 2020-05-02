@@ -631,7 +631,12 @@ class SSCHA_Minimizer(object):
         if __SCHA_PRINTSTRESS__ in keys:
             if not __SCHA_FILDYN__ in keys:
                 raise ValueError("Error, please specify a dynamical matrix.")
-            self.ensemble.has_stress = True
+
+            if namelist[__SCHA_PRINTSTRESS__]:
+                self.ensemble.has_stress = True
+            else:
+                self.ensemble.has_stress = False
+
         
     def print_info(self):
         """
@@ -1140,11 +1145,17 @@ Maybe data_dir is missing from your input?"""
         w, pols = superdyn.DyagDinQ(0)
 
         # Get translations
-        trans_mask = ~CC.Methods.get_translations(pols, superdyn.structure.get_masses_array())
+        trans_mask = CC.Methods.get_translations(pols, superdyn.structure.get_masses_array())
+
+        # Exclude also other w = 0 modes
+        locked_original = np.abs(w) < __EPSILON__
+        if np.sum(locked_original.astype(int)) > np.sum(trans_mask.astype(int)):
+            trans_mask = locked_original
+
 
         # Remove translations
-        w = w[trans_mask]
-        pols = pols[:, trans_mask]
+        w = w[~trans_mask]
+        pols = pols[:, ~trans_mask]
 
         # Frequencies are ordered, check if the first one is negative.
         if w[0] < 0:
@@ -1152,9 +1163,14 @@ Maybe data_dir is missing from your input?"""
             superdyn0 = self.ensemble.dyn_0.GenerateSupercellDyn(self.ensemble.supercell)
             wold, pold = superdyn0.DyagDinQ(0)
             
-            trans_mask = ~CC.Methods.get_translations(pold, superdyn0.structure.get_masses_array())
-            wold = wold[trans_mask] * __RyToCm__
-            pold = pold[:, trans_mask]
+            trans_mask = CC.Methods.get_translations(pold, superdyn0.structure.get_masses_array())
+            # Exclude also other w = 0 modes
+            locked_original = np.abs(wold) < __EPSILON__
+            if np.sum(locked_original.astype(int)) > np.sum(trans_mask.astype(int)):
+                trans_mask = locked_original
+
+            wold = wold[~trans_mask] * CC.Units.RY_TO_CM
+            pold = pold[:, ~trans_mask]
             total_mask = list(range(len(w)))
             ws = np.zeros(len(w))
             for i in range(len(w)):

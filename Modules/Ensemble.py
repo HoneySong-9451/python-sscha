@@ -809,8 +809,6 @@ class Ensemble:
         
         self.current_T = newT
 
-            
-        
         t1 = time.time()
         # Get the frequencies of the original dynamical matrix
         super_dyn = self.dyn_0.GenerateSupercellDyn(self.supercell)
@@ -818,7 +816,14 @@ class Ensemble:
         
         # Exclude translations
         trans_original = CC.Methods.get_translations(pols, super_dyn.structure.get_masses_array()) 
+
+        # Exclude also other w = 0 modes
+        locked_original = np.abs(w) < __EPSILON__
+        if np.sum(locked_original.astype(int)) > np.sum(trans_original.astype(int)):
+            trans_original = locked_original
+
         w = w[~trans_original]
+
 
         # Convert from Ry to Ha and in fortran double precision
         w = np.array(w/2, dtype = np.float64)
@@ -832,8 +837,14 @@ class Ensemble:
 
         trans_mask = CC.Methods.get_translations(pols, new_super_dyn.structure.get_masses_array()) 
 
+        # Check if other modes have been locked (by explicitly putting them to zero)
+        # Exclude also other w = 0 modes
+        locked_mask = np.abs(w) < __EPSILON__
+        if np.sum(locked_mask.astype(int)) > np.sum(trans_mask.astype(int)):
+            trans_mask = locked_mask
+
         # Check if the new dynamical matrix satisfies the sum rule
-        if (np.sum(trans_mask.astype(int)) != 3) or (np.sum(trans_original.astype(int)) != 3):
+        if (np.sum(trans_mask.astype(int)) < 3) or (np.sum(trans_original.astype(int)) < 3):
             ERR_MSG = """
 ERROR WHILE UPDATING THE WEIGHTS
     
@@ -845,14 +856,14 @@ Error, one dynamical matrix does not satisfy the acoustic sum rule.
 DETAILS OF ERROR:
     Number of translatinal modes in the original dyn = {}
     Number of translational modes in the target dyn = {}
-    (They should be both 3)
+    (They should be both >= 3)
 """.format(np.sum(trans_original.astype(int)), np.sum(trans_mask.astype(int)))
 
             print(ERR_MSG)
             raise ValueError(ERR_MSG)
 
         w = w[~trans_mask]
-        w = np.array(w/2, dtype = np.float64)
+        w = np.array(w/2, dtype = np.float64) # Ry to Ha for the sscha code
         new_a = SCHAModules.thermodynamic.w_to_a(w, newT)
         
         super_structure = new_super_dyn.structure
@@ -1320,6 +1331,14 @@ DETAILS OF ERROR:
         # Dyagonalize
         w, pols = supercell_dyn.DyagDinQ(0)
         trans = CC.Methods.get_translations(pols, supercell_dyn.structure.get_masses_array())
+
+        # Exclude also other w = 0 modes
+        other_locked = False
+        locked_original = np.abs(w) < __EPSILON__
+        if np.sum(locked_original.astype(int)) > np.sum(trans.astype(int)):
+            trans = locked_original
+            other_locked = True
+
         ityp = supercell_dyn.structure.get_ityp() + 1 # Py to fortran convertion
         mass = np.array(list(supercell_dyn.structure.masses.values()))
         
@@ -1357,6 +1376,21 @@ DETAILS OF ERROR:
             grad, grad_err = SCHAModules.get_gradient_supercell_new(self.rho, u_disp, eforces, w, pols, trans,
                                                                      self.current_T, mass, ityp, log_err, self.N,
                                                                      nat, 3*nat, len(mass))
+
+
+        # Apply eventually the constrain on the other locked modes modes
+        if other_locked:
+            m = supercell_dyn.structure.get_masses_array()
+            m = np.tile(m, (3,1)).T.ravel()
+            epol_m = pols / np.sqrt(m)
+            epol_inv = pols * np.sqrt(m)
+
+            # Set rigid translations to zero.
+            fc_d = np.einsum("ab, ai, bj -> ij", grad, epol_m, epol_m)
+            fc_d[trans, trans] = 0.0
+            
+            grad = np.einsum("ij, ai, bj -> ab", fc_d, epol_inv, epol_inv)
+
         
             
         t2 = time.time()
@@ -1504,9 +1538,15 @@ DETAILS OF ERROR:
         # Get frequencies and polarization vectors
         super_dyn = self.current_dyn.GenerateSupercellDyn(self.supercell)
         wr, pols = super_dyn.DyagDinQ(0)
-        trans = ~ CC.Methods.get_translations(pols, super_dyn.structure.get_masses_array())
-        wr = np.real( wr[trans])
-        pols = np.real( pols[:, trans])
+        trans =  CC.Methods.get_translations(pols, super_dyn.structure.get_masses_array())
+
+        # Exclude also other w = 0 modes
+        locked_original = np.abs(wr) < __EPSILON__
+        if np.sum(locked_original.astype(int)) > np.sum(trans.astype(int)):
+            trans = locked_original
+
+        wr = np.real( wr[~trans])
+        pols = np.real( pols[:, ~trans])
         
         nat = super_dyn.structure.N_atoms 
         
@@ -2156,6 +2196,11 @@ DETAILS OF ERROR:
 
         # Get the translational modes
         trans = CC.Methods.get_translations(pols, dyn_supercell.structure.get_masses_array())
+
+        # Exclude also other w = 0 modes
+        locked_original = np.abs(w) < __EPSILON__
+        if np.sum(locked_original.astype(int)) > np.sum(trans_original.astype(int)):
+            trans = locked_original
 
 
         # Get the atomic types
