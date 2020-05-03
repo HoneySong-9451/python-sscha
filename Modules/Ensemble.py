@@ -844,7 +844,9 @@ class Ensemble:
             trans_mask = locked_mask
 
         # Check if the new dynamical matrix satisfies the sum rule
-        if (np.sum(trans_mask.astype(int)) < 3) or (np.sum(trans_original.astype(int)) < 3):
+        n_trans_new = np.sum(trans_mask.astype(int))
+        n_trans_old = np.sum(trans_original.astype(int))
+        if (n_trans_new < 3) or (n_trans_old < 3) or (n_trans_old != n_trans_new):
             ERR_MSG = """
 ERROR WHILE UPDATING THE WEIGHTS
     

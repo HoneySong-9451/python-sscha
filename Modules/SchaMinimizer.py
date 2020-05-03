@@ -77,6 +77,7 @@ __SCHA_GRADIOP__ = "gradi_op"
 __SCHA_POPULATION__ = "population"
 __SCHA_PRINTSTRESS__ = "print_stress"
 __SCHA_USESPGLIB__ = "use_spglib"
+__SCHA_ISOLATED_MOL__ = "isolated_molecule"
 
 
 __SCHA_ALLOWED_KEYS__ = [__SCHA_LAMBDA_A__, __SCHA_ISBIN__,
@@ -90,7 +91,8 @@ __SCHA_ALLOWED_KEYS__ = [__SCHA_LAMBDA_A__, __SCHA_ISBIN__,
                          __SCHA_TG__, __SCHA_SUPERCELLSIZE__,
                          __SCHA_MAXSTEPS__, __SCHA_STRESSOFFSET__,
                          __SCHA_GRADIOP__, __SCHA_POPULATION__,
-                         __SCHA_PRINTSTRESS__, __SCHA_USESPGLIB__]
+                         __SCHA_PRINTSTRESS__, __SCHA_USESPGLIB__,
+                         __SCHA_ISOLATED_MOL__]
 __SCHA_MANDATORY_KEYS__ = [__SCHA_FILDYN__, __SCHA_NQIRR__, __SCHA_NQIRR__,
                            __SCHA_T__]
 
@@ -192,6 +194,11 @@ class SSCHA_Minimizer(object):
 
         # This is used to polish the ensemble energy
         self.eq_energy = 0
+
+        # If True, then apply also the rotational sum rule
+        # Note that it is not compatible with the supercell
+        self.isolated_molecule = False
+        
 
         # This is used to store the number of symmetries
         # It is used almost to check that no symmetry is broken along the minimization
@@ -322,6 +329,11 @@ class SSCHA_Minimizer(object):
             err /= np.sqrt(qe_sym.QE_nsym * np.prod(self.ensemble.supercell))
         else:
             CC.symmetries.CustomASR(dyn_grad[0, :,:])
+
+        # Apply the rotational sum rule if it is an isolated particle
+        if self.isolated_molecule:
+            CC.symmetries.ExcludeRotations(dyn_grad[0,:,:], self.dyn.structure)
+        
         t2 = time.time()
         print ("Time elapsed to symmetrize the gradient:", t2 - t1, "s")
         
@@ -493,7 +505,9 @@ class SSCHA_Minimizer(object):
         
         if __SCHA_LAMBDA_W__ in keys:
             self.min_step_struc = np.float64(namelist[__SCHA_LAMBDA_W__])
-            
+
+        if __SCHA_ISOLATED_MOL__:
+            self.isolated_molecule = bool(namelist[__SCHA_ISOLATED_MOL__])
         
         if __SCHA_MINSTRUC__ in keys:
             self.minim_struct = bool(namelist[__SCHA_MINSTRUC__])
@@ -795,34 +809,55 @@ Maybe data_dir is missing from your input?"""
             raise IOError(s)
         
         # Symmetrize the starting dynamical matrix and apply the sum rule
-        if verbosity:
-            print("Symmetry initialization...")
-        qe_sym = CC.symmetries.QE_Symmetry(self.dyn.structure)
-        qe_sym.SetupQPoint(verbose = verbosity)
 
-        if self.use_spglib:
-            qe_sym.SetupFromSPGLIB()
-
-            import spglib
+        if not self.neglect_symmetries:
             if verbosity:
-                print("Symmetry group: ", spglib.get_spacegroup(self.dyn.structure.get_ase_atoms()))
-            
-            self.N_symmetries = qe_sym.QE_nsym
+                print("Symmetry initialization...")
+            qe_sym = CC.symmetries.QE_Symmetry(self.dyn.structure)
+            qe_sym.SetupQPoint(verbose = verbosity)
 
-            # Symmetrize the dynamical matrix
-            self.dyn.SymmetrizeSupercell()
-        else:
-            fcq = np.array(self.dyn.dynmats)
-            qe_sym.SymmetrizeFCQ(fcq, self.dyn.q_stars, asr = "custom")
-            for iq in range(len(self.dyn.q_tot)):
-                self.dyn.dynmats[iq] = fcq[iq, :, :]
+            if self.use_spglib:
+                qe_sym.SetupFromSPGLIB()
+
+                import spglib
+                if verbosity:
+                    print("Symmetry group: ", spglib.get_spacegroup(self.dyn.structure.get_ase_atoms()))
+                
+                # Symmetrize the dynamical matrix
+                self.dyn.SymmetrizeSupercell()
+            else:
+                fcq = np.array(self.dyn.dynmats)
+                qe_sym.SymmetrizeFCQ(fcq, self.dyn.q_stars, asr = "custom")
+                for iq in range(len(self.dyn.q_tot)):
+                    self.dyn.dynmats[iq] = fcq[iq, :, :]
+            
+            # Save the number of symmetries
+            self.N_symmetries = qe_sym.QE_nsym
         
-        # Save the number of symmetries
-        self.N_symmetries = qe_sym.QE_nsym
+        self.N_symmetries = 1
         
         if verbosity:
             print("Total number of symmetries: {}".format(self.N_symmetries))
             print("Check for the imaginary frequencies...")
+
+
+        # Check if the system is an isolated particle
+        if self.isolated_molecule:
+            n_supercell = int(np.prod(self.dyn.GetSupercell()))
+            if n_supercell != 1:
+                ERR_MSG="""
+    Error, I'm assumig the system is an isolated molecule. 
+    However, the dynamical matrix has a supercell of size {} = {}, 
+    like a periodic system.
+    Correct the input accordingly.
+""".format(self.dyn.GetSupercell(), n_supercell)
+                print(ERR_MSG)
+                raise ValueError(ERR_MSG)
+
+            # Apply the rotational sum rule on the original dynamical matrix
+            # To avoid problems we do the same with the ensemble
+            CC.symmetries.ExcludeRotations(self.ensemble.dyn_0.dynmats[0], self.ensemble.dyn_0.structure)
+            CC.symmetries.ExcludeRotations(self.dyn.dynmats[0], self.dyn.structure)
         
         self.check_imaginary_frequencies()
         self.update()
