@@ -1380,18 +1380,18 @@ DETAILS OF ERROR:
                                                                      nat, 3*nat, len(mass))
 
 
-        # Apply eventually the constrain on the other locked modes modes
-        if other_locked:
-            m = supercell_dyn.structure.get_masses_array()
-            m = np.tile(m, (3,1)).T.ravel()
-            epol_m = pols / np.sqrt(m)
-            epol_inv = pols * np.sqrt(m)
+        # # Apply eventually the constrain on the other locked modes modes
+        # if other_locked:
+        #     m = supercell_dyn.structure.get_masses_array()
+        #     m = np.tile(m, (3,1)).T.ravel()
+        #     epol_m = pols / np.sqrt(m)
+        #     epol_inv = pols * np.sqrt(m)
 
-            # Set rigid translations to zero.
-            fc_d = np.einsum("ab, ai, bj -> ij", grad, epol_m, epol_m)
-            fc_d[trans, trans] = 0.0
+        #     # Set rigid translations to zero.
+        #     fc_d = np.einsum("ab, ai, bj -> ij", grad, epol_m, epol_m)
+        #     fc_d[trans, trans] = 0.0
             
-            grad = np.einsum("ij, ai, bj -> ab", fc_d, epol_inv, epol_inv)
+        #     grad = np.einsum("ij, ai, bj -> ab", fc_d, epol_inv, epol_inv)
 
         
             

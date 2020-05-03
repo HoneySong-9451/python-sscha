@@ -1663,7 +1663,6 @@ def ApplyFCPrecond(current_dyn, matrix, T = 0):
     
     
 
-
 def GetStructPrecond(current_dyn):
     r"""
     GET THE PRECONDITIONER FOR THE STRUCTURE MINIMIZATION
